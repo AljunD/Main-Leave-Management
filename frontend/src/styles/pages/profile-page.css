@@ -1,0 +1,12 @@
+@import './common.css';
+
+.profile-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; max-width: 620px; margin: 0 auto; }
+.profile-card__banner { height: 90px; background: linear-gradient(135deg, #1d4ed8, #2563eb); }
+.profile-avatar { width: 86px; height: 86px; margin: -43px auto 0.7rem; border-radius: 50%; background: #dbeafe; color: #1e40af; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.6rem; border: 3px solid #fff; }
+.profile-card__body { padding: 0 1rem 1rem; }
+.emp-id { text-align: center; color: var(--muted); }
+.profile-dl { margin: 0; }
+.profile-dl > div { border-bottom: 1px solid #eef2f7; padding: 0.75rem 0; }
+.profile-dl > div:last-child { border-bottom: none; }
+.profile-dl dt { font-size: 0.74rem; color: var(--muted); text-transform: uppercase; margin-bottom: 0.2rem; }
+.profile-dl dd { margin: 0; font-weight: 500; }

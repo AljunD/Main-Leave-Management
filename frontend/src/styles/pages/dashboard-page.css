@@ -1,0 +1,13 @@
+@import './common.css';
+
+.dashboard-page .page-intro { display: flex; gap: 0.7rem; align-items: center; flex-wrap: wrap; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; }
+.stat-label { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; }
+.stat-num { font-size: 1.8rem; }
+.stat-unit { color: var(--muted); }
+.apply-cta { display: block; text-align: center; text-decoration: none; margin: 1rem 0; }
+.card-list { display: grid; gap: 0.8rem; }
+.leave-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; }
+.leave-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem; }
+.leave-meta, .leave-reason { margin: 0.4rem 0 0; }
