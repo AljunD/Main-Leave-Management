@@ -17,6 +17,7 @@ import AdminEmployee from "../pages/admin/AdminEmployee";
 import AdminLeaveHistory from "../pages/admin/AdminLeaveHistory";
 import AdminTrashEmployee from "../pages/admin/AdminTrashEmployee";
 import AdminTrashLeaveRecord from "../pages/admin/AdminTrashLeaveRecord";
+import AdminAuditLogs from "../pages/admin/AdminAuditLogs";
 
 export default function AppRoutes() {
   return (
@@ -73,6 +74,14 @@ export default function AppRoutes() {
           element={
             <ProtectedRoute allowedRoles={["admin"]}>
               <AdminTrashLeaveRecord />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/audit-logs"
+          element={
+            <ProtectedRoute allowedRoles={["admin"]}>
+              <AdminAuditLogs />
             </ProtectedRoute>
           }
         />

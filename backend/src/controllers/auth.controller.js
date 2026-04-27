@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.model.js';
+import AuditLog from '../models/AuditLog.model.js';
 import { loginSchema, changePasswordSchema } from '../validators/auth.validator.js';
 import validate from '../middleware/validate.middleware.js';
 
@@ -13,29 +14,64 @@ export const login = [
 
             const user = await User.findOne({
                 email: email.toLowerCase().trim(),
-                isTrashed: false, // ✅ only check trash
+                isTrashed: false,
             });
 
             if (!user) {
-                return res.status(401).json({
-                    success: false,
-                    statusCode: 401,
-                    message: 'Invalid credentials',
+                await AuditLog.create({
+                    action: 'login',
+                    targetId: email,
+                    targetType: 'User',
+                    performedBy: null,
+                    performedByName: null,
+                    performedByRole: null,
+                    requestMethod: req.method,
+                    requestUrl: req.originalUrl,
+                    beforeState: null,
+                    afterState: null,
+                    status: 'failure',
+                    details: `Login attempt failed: user ${email} not found`
                 });
+                return res.status(401).json({ success: false, statusCode: 401, message: 'Invalid credentials' });
             }
 
             const isMatch = await bcrypt.compare(password, user.password);
             if (!isMatch) {
-                return res.status(401).json({
-                    success: false,
-                    statusCode: 401,
-                    message: 'Invalid credentials',
+                await AuditLog.create({
+                    action: 'login',
+                    targetId: user._id.toString(),
+                    targetType: 'User',
+                    performedBy: user._id,
+                    performedByName: `${user.name} ${user.lastName}`,
+                    performedByRole: user.role,
+                    requestMethod: req.method,
+                    requestUrl: req.originalUrl,
+                    beforeState: null,
+                    afterState: null,
+                    status: 'failure',
+                    details: `Login attempt failed: incorrect password for ${user.email}`
                 });
+                return res.status(401).json({ success: false, statusCode: 401, message: 'Invalid credentials' });
             }
 
             const token = jwt.sign({ id: user._id.toString(), role: user.role, email: user.email },
                 process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
             );
+
+            await AuditLog.create({
+                action: 'login',
+                targetId: user._id.toString(),
+                targetType: 'User',
+                performedBy: user._id,
+                performedByName: `${user.name} ${user.lastName}`,
+                performedByRole: user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: null,
+                afterState: user,
+                status: 'success',
+                details: `User ${user.email} logged in`
+            });
 
             res.json({
                 success: true,
@@ -55,61 +91,125 @@ export const login = [
                     isTrashed: user.isTrashed,
                     trashedAt: user.trashedAt,
                     createdAt: user.createdAt,
+                    updatedAt: user.updatedAt,
+                    isDeleted: user.isDeleted,
+                    deletedAt: user.deletedAt,
                 },
             });
         } catch (err) {
             console.error('Error during login:', err.message);
-            res.status(500).json({
-                success: false,
-                statusCode: 500,
-                message: 'Server error while logging in',
+            await AuditLog.create({
+                action: 'login',
+                targetId: req.body.email,
+                targetType: 'User',
+                performedBy: null,
+                performedByName: null,
+                performedByRole: null,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: null,
+                afterState: null,
+                status: 'failure',
+                details: `Server error during login for ${req.body.email}`
             });
+            res.status(500).json({ success: false, statusCode: 500, message: 'Server error while logging in' });
         }
     },
 ];
-// === LOGOUT ===
-export const logout = async(req, res) => {
-    try {
-        // If you are using token blacklisting, you can store the token in a blacklist here.
-        // Example: Blacklist.add(req.token);
-
-        res.json({
-            success: true,
-            statusCode: 200,
-            message: 'Logout successful',
-        });
-    } catch (err) {
-        console.error('Error during logout:', err.message);
-        res.status(500).json({
-            success: false,
-            statusCode: 500,
-            message: 'Server error while logging out',
-        });
-    }
-};
-
-// === GET CURRENT USER ===
 export const getMe = async(req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password');
 
-        // Only check if user exists and is not trashed
         if (!user || user.isTrashed) {
-            return res.status(404).json({
-                success: false,
-                statusCode: 404,
-                message: 'User not found',
+            await AuditLog.create({
+                action: 'get-me',
+                targetId: req.user.id,
+                targetType: 'User',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: null,
+                afterState: null,
+                status: 'failure',
+                details: `User profile not found for ${req.user.email}`
             });
+            return res.status(404).json({ success: false, statusCode: 404, message: 'User not found' });
         }
+
+        await AuditLog.create({
+            action: 'get-me',
+            targetId: user._id.toString(),
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: null,
+            afterState: user,
+            status: 'success',
+            details: `Fetched current user profile for ${user.email}`
+        });
 
         res.json({ success: true, statusCode: 200, user });
     } catch (err) {
         console.error('Error fetching user profile:', err.message);
-        res.status(500).json({
-            success: false,
-            statusCode: 500,
-            message: 'Server error while fetching profile',
+        await AuditLog.create({
+            action: 'get-me',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: null,
+            afterState: null,
+            status: 'failure',
+            details: `Server error while fetching profile for ${req.user.email}`
         });
+        res.status(500).json({ success: false, statusCode: 500, message: 'Server error while fetching profile' });
+    }
+};
+
+// === LOGOUT ===
+export const logout = async(req, res) => {
+    try {
+        await AuditLog.create({
+            action: 'logout',
+            targetId: req.user.id.toString(),
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: null,
+            afterState: null,
+            status: 'success',
+            details: `User ${req.user.email} logged out`
+        });
+
+        res.json({ success: true, statusCode: 200, message: 'Logout successful' });
+    } catch (err) {
+        console.error('Error during logout:', err.message);
+        await AuditLog.create({
+            action: 'logout',
+            targetId: req.user.id.toString(),
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: null,
+            afterState: null,
+            status: 'failure',
+            details: `Server error during logout for ${req.user.email}`
+        });
+        res.status(500).json({ success: false, statusCode: 500, message: 'Server error while logging out' });
     }
 };
 
@@ -119,41 +219,66 @@ export const changePassword = [
     async(req, res) => {
         try {
             const user = await User.findById(req.user.id);
-
-            // ✅ Only check if user exists and is not trashed
             if (!user || user.isTrashed) {
-                return res.status(404).json({
-                    success: false,
-                    statusCode: 404,
-                    message: 'User not found',
-                });
+                return res.status(404).json({ success: false, statusCode: 404, message: 'User not found' });
             }
 
             const isMatch = await bcrypt.compare(req.body.currentPassword, user.password);
             if (!isMatch) {
-                return res.status(400).json({
-                    success: false,
-                    statusCode: 400,
-                    message: 'Current password is incorrect',
+                await AuditLog.create({
+                    action: 'change-password',
+                    targetId: user._id.toString(),
+                    targetType: 'User',
+                    performedBy: user._id,
+                    performedByName: `${user.name} ${user.lastName}`,
+                    performedByRole: user.role,
+                    requestMethod: req.method,
+                    requestUrl: req.originalUrl,
+                    beforeState: null,
+                    afterState: null,
+                    status: 'failure',
+                    details: `User ${user.email} attempted password change but current password incorrect`
                 });
+                return res.status(400).json({ success: false, statusCode: 400, message: 'Current password is incorrect' });
             }
 
-            // Pre-save hook will hash the new password
+            const before = { password: user.password };
             user.password = req.body.newPassword;
             await user.save();
 
-            res.json({
-                success: true,
-                statusCode: 200,
-                message: 'Password changed successfully',
+            await AuditLog.create({
+                action: 'change-password',
+                targetId: user._id.toString(),
+                targetType: 'User',
+                performedBy: user._id,
+                performedByName: `${user.name} ${user.lastName}`,
+                performedByRole: user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: before,
+                afterState: { password: 'updated' },
+                status: 'success',
+                details: `User ${user.email} changed their password`
             });
+
+            res.json({ success: true, statusCode: 200, message: 'Password changed successfully' });
         } catch (err) {
             console.error('Error changing password:', err.message);
-            res.status(500).json({
-                success: false,
-                statusCode: 500,
-                message: 'Server error while changing password',
+            await AuditLog.create({
+                action: 'change-password',
+                targetId: req.user.id,
+                targetType: 'User',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: null,
+                afterState: null,
+                status: 'failure',
+                details: `Server error while changing password for ${req.user.email}`
             });
+            res.status(500).json({ success: false, statusCode: 500, message: 'Server error while changing password' });
         }
     },
 ];

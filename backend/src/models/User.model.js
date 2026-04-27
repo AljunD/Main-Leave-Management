@@ -38,11 +38,14 @@ const userSchema = new mongoose.Schema({
     // Trash flow only
     isTrashed: { type: Boolean, default: false },
     trashedAt: { type: Date, default: null },
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 // Indexes
 userSchema.index({ role: 1 });
 userSchema.index({ isTrashed: 1 });
+userSchema.index({ isDeleted: 1 });
 
 // Virtuals
 userSchema.virtual('isActive').get(function() {

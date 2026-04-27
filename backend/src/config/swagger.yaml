@@ -19,6 +19,7 @@ components:
       type: object
       properties:
         id: { type: string }
+        employeeId: { type: string }
         name: { type: string }
         lastName: { type: string }
         department: { type: string }
@@ -32,6 +33,8 @@ components:
         leaveBalance: { type: integer, default: 20 }
         isTrashed: { type: boolean, default: false }
         trashedAt: { type: string, format: date-time, nullable: true }
+        isDeleted: { type: boolean, default: false }
+        deletedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -55,6 +58,8 @@ components:
         remarks: { type: string }
         isTrashed: { type: boolean, default: false }
         trashedAt: { type: string, format: date-time, nullable: true }
+        isDeleted: { type: boolean, default: false }
+        deletedAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -233,6 +238,14 @@ paths:
       responses:
         '200': { description: Admin stats }
 
+  /admin/employees/trashed:
+    get:
+      summary: Get all trashed employees
+      tags: [Admin]
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: List of trashed employees }
+
   /admin/employees/{id}:
     patch:
       summary: Update employee details
@@ -275,6 +288,20 @@ paths:
         '200': { description: Employee restored }
         '404': { description: Employee not found }
 
+  /admin/employees/{id}/permanent:
+    delete:
+      summary: Mark employee as permanently deleted (isDeleted flag)
+      tags: [Admin]
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Employee marked as deleted }
+        '404': { description: Employee not found }
+
   /admin/leaves:
     get:
       summary: Get all leaves
@@ -312,6 +339,14 @@ paths:
         '400': { description: Only pending leaves can be updated }
         '404': { description: Leave not found }
 
+  /admin/leaves/trashed:
+    get:
+      summary: Get all trashed leaves
+      tags: [Admin]
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200': { description: List of trashed leaves }
+
   /admin/leaves/{id}/trash:
     patch:
       summary: Move leave to trash (mark isTrashed + trashedAt)
@@ -348,4 +383,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Leave'
+        '404': { description: Leave not found }
+        
+  /admin/leaves/{id}/permanent:
+    delete:
+      summary: Mark leave as permanently deleted (isDeleted flag)
+      tags: [Admin]
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Leave marked as deleted }
         '404': { description: Leave not found }

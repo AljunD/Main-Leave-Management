@@ -15,6 +15,7 @@ import {
     restoreLeave,
     getTrashedLeaves,
     viewLeaveRequestDetail,
+    getAuditLogs,
 } from '../controllers/admin.controller.js';
 
 const router = Router();
@@ -55,5 +56,8 @@ router.patch('/leaves/:id/trash', trashLeave);
 
 // Restore leave from trash
 router.patch('/leaves/:id/restore', restoreLeave);
+
+// Get audit logs
+router.get('/audit-logs', getAuditLogs);
 
 export default router;

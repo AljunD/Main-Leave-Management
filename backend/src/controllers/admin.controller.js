@@ -4,6 +4,7 @@ import { calculateLeaveDays } from '../utils/leaveUtils.js';
 import { createUserSchema } from '../validators/user.validator.js';
 import { statusUpdateSchema } from '../validators/leave.validator.js';
 import validate from '../middleware/validate.middleware.js';
+import AuditLog from '../models/AuditLog.model.js';
 
 // === USER MANAGEMENT ===
 export const createUser = [
@@ -12,44 +13,68 @@ export const createUser = [
         try {
             const existing = await User.findOne({ email: req.body.email });
             if (existing) {
-                return res.status(400).json({
-                    success: false,
-                    statusCode: 400,
-                    message: 'Email already exists',
+                await AuditLog.create({
+                    action: 'create-user',
+                    targetId: req.body.email,
+                    targetType: 'User',
+                    performedBy: req.user.id,
+                    performedByName: `${req.user.name} ${req.user.lastName}`,
+                    performedByRole: req.user.role,
+                    requestMethod: req.method,
+                    requestUrl: req.originalUrl,
+                    beforeState: null,
+                    afterState: null,
+                    status: 'failure',
+                    details: `Attempted to create user ${req.body.email}, but email already exists`
                 });
+                return res.status(400).json({ success: false, message: 'Email already exists' });
             }
 
             const user = new User(req.body);
             await user.save();
 
+            // 🔹 Audit log with method, url, status
+            await AuditLog.create({
+                action: 'create-user',
+                targetId: user._id.toString(),
+                targetType: 'User',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: null,
+                afterState: user,
+                status: 'success',
+                details: `Admin ${req.user.email} created user ${user.email}`
+            });
+
             res.status(201).json({
                 success: true,
-                statusCode: 201,
                 message: 'User created successfully',
-                user: {
-                    id: user._id,
-                    name: user.name,
-                    lastName: user.lastName,
-                    department: user.department,
-                    position: user.position,
-                    contact: user.contact,
-                    email: user.email,
-                    role: user.role,
-                    leaveBalance: user.leaveBalance,
-                    isTrashed: user.isTrashed,
-                    trashedAt: user.trashedAt,
-                    createdAt: user.createdAt,
-                },
+                user
             });
         } catch (err) {
             console.error('Error creating user:', err.message);
-            res.status(500).json({
-                success: false,
-                statusCode: 500,
-                message: 'Server error while creating user',
+
+            await AuditLog.create({
+                action: 'create-user',
+                targetId: req.body.email,
+                targetType: 'User',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: null,
+                afterState: null,
+                status: 'failure',
+                details: `Server error while creating user ${req.body.email}`
             });
+
+            res.status(500).json({ success: false, message: 'Server error while creating user' });
         }
-    },
+    }
 ];
 
 export const getAllEmployees = async(req, res) => {
@@ -86,6 +111,7 @@ export const getAdminStats = async(req, res) => {
 export const updateEmployee = async(req, res) => {
     try {
         const { id } = req.params;
+        const before = await User.findById(id).lean();
 
         const updates = {
             name: req.body.name,
@@ -99,58 +125,172 @@ export const updateEmployee = async(req, res) => {
             updatedAt: new Date(),
         };
 
-        const user = await User.findByIdAndUpdate(
-            id,
-            updates, { returnDocument: 'after' } // ✅ replaces { new: true }
-        ).select("-password");;
+        const user = await User.findByIdAndUpdate(id, updates, { returnDocument: 'after' }).select("-password");
 
         if (!user) {
-            return res.status(404).json({
-                success: false,
-                statusCode: 404,
-                message: "Employee not found",
+            await AuditLog.create({
+                action: 'update-user',
+                targetId: id,
+                targetType: 'User',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: before,
+                afterState: null,
+                status: 'failure',
+                details: `Attempted to update employee ${id}, but not found`
             });
+            return res.status(404).json({ success: false, message: "Employee not found" });
         }
 
-        res.json({
-            success: true,
-            statusCode: 200,
-            message: "Employee updated successfully",
-            user,
+        await AuditLog.create({
+            action: 'update-user',
+            targetId: user._id.toString(),
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: before,
+            afterState: user,
+            status: 'success',
+            details: `Admin ${req.user.email} updated user ${user.email}`
         });
+
+        res.json({ success: true, message: "Employee updated successfully", user });
     } catch (err) {
         console.error("Error updating employee:", err.message);
-        res.status(500).json({
-            success: false,
-            statusCode: 500,
-            message: "Server error while updating employee",
-        });
+        res.status(500).json({ success: false, message: "Server error while updating employee" });
     }
 };
 
 export const trashEmployee = async(req, res) => {
     try {
+        // Snapshot before change
+        const before = await User.findById(req.params.id).lean();
+
         const user = await User.findByIdAndUpdate(
-            req.params.id, { isTrashed: true, trashedAt: new Date() }, { returnDocument: 'after' } // ✅ correct option
+            req.params.id, { isTrashed: true, trashedAt: new Date() }, { returnDocument: 'after' }
         );
 
-        if (!user) return res.status(404).json({ success: false, message: 'Employee not found' });
+        if (!user) {
+            await AuditLog.create({
+                action: 'trash-user',
+                targetId: req.params.id,
+                targetType: 'User',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: before,
+                afterState: null,
+                status: 'failure',
+                details: `Attempted to trash employee ${req.params.id}, but not found`
+            });
+            return res.status(404).json({ success: false, message: 'Employee not found' });
+        }
+
+        // Audit log for success
+        await AuditLog.create({
+            action: 'trash-user',
+            targetId: user._id.toString(),
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: before,
+            afterState: user,
+            status: 'success',
+            details: `Employee ${user.employeeId} moved to trash`
+        });
+
         res.json({ success: true, message: 'Employee moved to trash', user });
     } catch (err) {
+        console.error('Error trashing employee:', err.message);
+        await AuditLog.create({
+            action: 'trash-user',
+            targetId: req.params.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: null,
+            afterState: null,
+            status: 'failure',
+            details: `Server error while trashing employee ${req.params.id}`
+        });
         res.status(500).json({ success: false, message: 'Server error while trashing employee' });
     }
 };
 
 export const restoreEmployee = async(req, res) => {
     try {
+        // Snapshot before change
+        const before = await User.findById(req.params.id).lean();
+
         const user = await User.findByIdAndUpdate(
-            req.params.id, { isTrashed: false, trashedAt: null }, { returnDocument: 'after' } // ✅ correct option
+            req.params.id, { isTrashed: false, trashedAt: null }, { returnDocument: 'after' }
         );
 
-        if (!user) return res.status(404).json({ success: false, message: 'Employee not found' });
+        if (!user) {
+            await AuditLog.create({
+                action: 'restore-user',
+                targetId: req.params.id,
+                targetType: 'User',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: before,
+                afterState: null,
+                status: 'failure',
+                details: `Attempted to restore employee ${req.params.id}, but not found`
+            });
+            return res.status(404).json({ success: false, message: 'Employee not found' });
+        }
+
+        // Audit log for success
+        await AuditLog.create({
+            action: 'restore-user',
+            targetId: user._id.toString(),
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: before,
+            afterState: user,
+            status: 'success',
+            details: `Employee ${user.employeeId} restored from trash`
+        });
+
         res.json({ success: true, message: 'Employee restored', user });
     } catch (err) {
         console.error('Error restoring employee:', err.message);
+        await AuditLog.create({
+            action: 'restore-user',
+            targetId: req.params.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: null,
+            afterState: null,
+            status: 'failure',
+            details: `Server error while restoring employee ${req.params.id}`
+        });
         res.status(500).json({ success: false, message: 'Server error while restoring employee' });
     }
 };
@@ -163,6 +303,16 @@ export const getTrashedEmployees = async(req, res) => {
             .lean();
 
         res.json({ success: true, statusCode: 200, employees });
+
+        //AUDITLOGS
+        await AuditLog.create({
+            action: 'get-trashed-employees',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role
+        });
     } catch (err) {
         console.error('Error fetching trashed employees:', err.message);
         res.status(500).json({
@@ -172,6 +322,56 @@ export const getTrashedEmployees = async(req, res) => {
         });
     }
 };
+// Permanent delete (mark as deleted, not remove)
+export const deleteEmployee = async(req, res) => {
+    try {
+        const before = await User.findById(req.params.id).lean(); // snapshot before
+
+        const user = await User.findByIdAndUpdate(
+            req.params.id, { isDeleted: true, deletedAt: new Date() }, { returnDocument: 'after' }
+        );
+
+        if (!user) {
+            await AuditLog.create({
+                action: 'delete',
+                targetId: req.params.id,
+                targetType: 'User',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: before,
+                afterState: null,
+                status: 'failure',
+                details: `Attempted to delete employee ${req.params.id}, but not found`
+            });
+            return res.status(404).json({ success: false, message: 'Employee not found' });
+        }
+
+        // 🔹 Audit log
+        await AuditLog.create({
+            action: 'delete',
+            targetId: user.employeeId,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: before,
+            afterState: user,
+            status: 'success',
+            details: `Employee ${user.employeeId} marked as deleted`
+        });
+
+        res.json({ success: true, message: 'Employee marked as deleted', user });
+    } catch (err) {
+        console.error('Error marking employee deleted:', err.message);
+        res.status(500).json({ success: false, message: 'Server error while deleting employee' });
+    }
+};
+
 
 // === LEAVE MANAGEMENT ===
 export const getAllLeaves = async(req, res) => {
@@ -274,5 +474,81 @@ export const getTrashedLeaves = async(req, res) => {
             statusCode: 500,
             message: 'Server error while fetching trashed leaves',
         });
+    }
+};
+// Permanent delete (mark as deleted, not remove)
+export const deleteLeave = async(req, res) => {
+    try {
+        // Snapshot before change
+        const before = await Leave.findById(req.params.id).lean();
+
+        const leave = await Leave.findByIdAndUpdate(
+            req.params.id, { isDeleted: true, deletedAt: new Date() }, { returnDocument: 'after' }
+        );
+
+        if (!leave) {
+            await AuditLog.create({
+                action: 'delete-leave',
+                targetId: req.params.id,
+                targetType: 'Leave',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: before,
+                afterState: null,
+                status: 'failure',
+                details: `Attempted to delete leave ${req.params.id}, but not found`
+            });
+            return res.status(404).json({ success: false, message: 'Leave not found' });
+        }
+
+        // Audit log for success
+        await AuditLog.create({
+            action: 'delete-leave',
+            targetId: leave._id.toString(),
+            targetType: 'Leave',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: before,
+            afterState: leave,
+            status: 'success',
+            details: `Leave ${leave._id} marked as deleted`
+        });
+
+        res.json({ success: true, message: 'Leave marked as deleted', leave });
+    } catch (err) {
+        console.error('Error marking leave deleted:', err.message);
+        await AuditLog.create({
+            action: 'delete-leave',
+            targetId: req.params.id,
+            targetType: 'Leave',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: null,
+            afterState: null,
+            status: 'failure',
+            details: `Server error while deleting leave ${req.params.id}`
+        });
+        res.status(500).json({ success: false, message: 'Server error while deleting leave' });
+    }
+};
+// controllers/admin.controller.js
+export const getAuditLogs = async(req, res) => {
+    try {
+        const logs = await AuditLog.find()
+            .sort({ createdAt: -1 })
+            .lean();
+        res.json({ success: true, statusCode: 200, logs });
+    } catch (err) {
+        console.error('Error fetching audit logs:', err.message);
+        res.status(500).json({ success: false, statusCode: 500, message: 'Server error while fetching audit logs' });
     }
 };

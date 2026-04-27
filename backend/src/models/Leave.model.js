@@ -29,11 +29,14 @@ const leaveSchema = new mongoose.Schema({
     // Trash flow only
     isTrashed: { type: Boolean, default: false },
     trashedAt: { type: Date, default: null },
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 // Indexes
 leaveSchema.index({ employee: 1, status: 1 });
 leaveSchema.index({ isTrashed: 1 });
+leaveSchema.index({ isDeleted: 1 });
 
 // Virtual: leaveDays
 leaveSchema.virtual('leaveDays').get(function() {

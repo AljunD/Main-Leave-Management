@@ -123,6 +123,7 @@ export default function AdminLeaveHistory() {
           <div className="nav-section">Trash</div>
           <NavLink to="/admin/trash/employee">Employee</NavLink>
           <NavLink to="/admin/trash/leave-record">Leave Record</NavLink>
+          <NavLink to="/admin/audit-logs">Audit Logs</NavLink>
         </nav>
         <div className="sidebar-footer">
           <img src="https://i.pravatar.cc/40" alt="Profile" className="profile-pic" />

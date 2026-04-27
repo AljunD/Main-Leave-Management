@@ -57,21 +57,12 @@ export const createLeave = [
         try {
             const employee = await User.findById(req.user.id);
             if (!employee || employee.isTrashed) {
-                return res.status(404).json({
-                    success: false,
-                    statusCode: 404,
-                    message: 'Employee not found',
-                });
+                return res.status(404).json({ success: false, message: 'Employee not found' });
             }
 
             const { duration } = calculateLeaveDays(req.body.startDate, req.body.endDate);
-
             if (employee.leaveBalance < duration) {
-                return res.status(400).json({
-                    success: false,
-                    statusCode: 400,
-                    message: 'Insufficient leave balance for requested days',
-                });
+                return res.status(400).json({ success: false, message: 'Insufficient leave balance' });
             }
 
             const leave = new Leave({
@@ -87,22 +78,29 @@ export const createLeave = [
 
             await leave.save();
 
-            res.status(201).json({
-                success: true,
-                statusCode: 201,
-                message: 'Leave request created successfully',
-                leave,
+            await AuditLog.create({
+                action: 'apply-leave',
+                targetId: leave._id.toString(),
+                targetType: 'Leave',
+                performedBy: req.user.id,
+                performedByName: `${employee.name} ${employee.lastName}`,
+                performedByRole: employee.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: null,
+                afterState: leave,
+                status: 'success',
+                details: `Employee ${employee.employeeId} applied for ${leave.leaveType} leave`
             });
+
+            res.status(201).json({ success: true, message: 'Leave request created successfully', leave });
         } catch (err) {
             console.error('Error creating leave:', err.message);
-            res.status(500).json({
-                success: false,
-                statusCode: 500,
-                message: 'Server error while creating leave',
-            });
+            res.status(500).json({ success: false, message: 'Server error while creating leave' });
         }
     },
 ];
+
 
 export const cancelLeave = async(req, res) => {
     try {
@@ -138,6 +136,17 @@ export const cancelLeave = async(req, res) => {
 
         leave.status = 'cancelled';
         await leave.save();
+
+        // 🔹 Audit log
+        await AuditLog.create({
+            action: 'cancel-leave',
+            targetId: leave._id.toString(),
+            targetType: 'Leave',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            details: `Employee ${req.user.email} cancelled leave request`
+        });
 
         res.json({
             success: true,
