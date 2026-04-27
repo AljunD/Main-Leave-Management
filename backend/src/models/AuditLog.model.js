@@ -4,7 +4,7 @@ const auditLogSchema = new mongoose.Schema({
     action: { type: String, required: true },
     targetId: { type: String, required: true },
     targetType: { type: String, required: true },
-    performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
     performedByName: { type: String },
     performedByRole: { type: String }, // "admin" or "employee"
     details: { type: String },

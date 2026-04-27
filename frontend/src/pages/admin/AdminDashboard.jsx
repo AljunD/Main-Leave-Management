@@ -13,58 +13,60 @@ export default function AdminDashboard() {
   const pageSize = 10;
   const [user, setUser] = useState(null);
 
-  // Fetch current user profile
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const res = await API.get("/auth/me"); // backend returns { success, user }
-        setUser(res.data.user);
-      } catch (err) {
-        console.error("Error fetching current user:", err);
-      }
-    };
-    fetchUser();
-  }, []);
-
-  // Logout handler (connected to backend)
-  const handleLogout = async () => {
+// 🔹 Fetch current user profile
+useEffect(() => {
+  const fetchUser = async () => {
     try {
-      await API.post("/auth/logout");
-      localStorage.removeItem("token");
-      window.location.href = "/login";
+      const res = await API.get("/auth/me"); // backend returns { success, user }
+      setUser(res.data.user);
     } catch (err) {
-      console.error("Error logging out:", err);
+      console.error("Error fetching current user:", err);
     }
   };
+  fetchUser();
+}, []);
 
-  // 🔹 Fetch stats from backend
-  const fetchStats = async () => {
-    try {
-      const res = await API.get("/admin/stats");
-      setStats(res.data.stats || { totalEmployees: 0, pendingLeaves: 0, approvedLeaves: 0 });
-    } catch (err) {
-      console.error("Error fetching stats:", err);
-    }
-  };
+// 🔹 Logout handler (connected to backend)
+const handleLogout = async () => {
+  try {
+    await API.post("/auth/logout");
+    localStorage.removeItem("token");
+    window.location.href = "/login";
+  } catch (err) {
+    console.error("Error logging out:", err);
+  }
+};
 
-  // 🔹 Fetch leaves from backend
-  const fetchLeaves = async () => {
-    try {
-      const res = await API.get("/admin/leaves");
-      setLeaves(res.data.leaves || []);
-    } catch (err) {
-      console.error("Error fetching leaves:", err);
-      setLeaves([]);
-    }
-  };
+// 🔹 Fetch stats from backend
+const fetchStats = async () => {
+  try {
+    const res = await API.get("/admin/stats");
+    setStats(res.data.stats || { totalEmployees: 0, pendingLeaves: 0, approvedLeaves: 0 });
+  } catch (err) {
+    console.error("Error fetching stats:", err);
+  }
+};
 
-  useEffect(() => {
-    fetchStats();
-    fetchLeaves();
-  }, []);
+// 🔹 Fetch leaves from backend
+const fetchLeaves = async () => {
+  try {
+    const res = await API.get("/admin/leaves");
+    setLeaves(res.data.leaves || []);
+  } catch (err) {
+    console.error("Error fetching leaves:", err);
+    setLeaves([]);
+  }
+};
 
-  // 🔹 Filter leaves by search query
-  const filteredLeaves = leaves.filter((l) => {
+useEffect(() => {
+  fetchStats();
+  fetchLeaves();
+}, []);
+
+// 🔹 Filter leaves by search query
+const filteredLeaves = leaves
+  .filter((l) => l.status !== "cancelled")   // ✅ remove cancelled
+  .filter((l) => {
     const fullName = `${l.employee?.name || ""} ${l.employee?.lastName || ""}`.toLowerCase();
     const q = query.toLowerCase();
     return (
@@ -74,22 +76,43 @@ export default function AdminDashboard() {
     );
   });
 
-  // 🔹 Pagination
-  const totalPages = Math.max(1, Math.ceil(filteredLeaves.length / pageSize));
-  const paginatedLeaves = filteredLeaves.slice((page - 1) * pageSize, page * pageSize);
+// 🔹 Sort by pending → approved → rejected
+const statusOrder = { pending: 1, approved: 2, rejected: 3 };
 
-  // 🔹 Approve/Reject leave
-  const updateLeaveStatus = async (id, status) => {
-    try {
-      await API.patch(`/admin/leaves/${id}/status`, { status, remarks });
-      alert(`Leave ${status} successfully`);
-      fetchLeaves();
-      setSelectedLeave(null);
-      setRemarks("");
-    } catch (err) {
-      alert(err.response?.data?.message || "Error updating leave status");
+const sortedLeaves = [...filteredLeaves].sort((a, b) => {
+  const orderA = statusOrder[a.status] || 99; // default for other statuses
+  const orderB = statusOrder[b.status] || 99;
+  return orderA - orderB;
+});
+
+
+// 🔹 Pagination
+const totalPages = Math.max(1, Math.ceil(sortedLeaves.length / pageSize));
+const paginatedLeaves = sortedLeaves.slice((page - 1) * pageSize, page * pageSize);
+
+// 🔹 Approve/Reject leave
+const updateLeaveStatus = async (id, status) => {
+  try {
+    const payload = { status };
+
+    if (status === "rejected") {
+      if (!remarks.trim()) {
+        alert("Remarks are required when rejecting a leave.");
+        return;
+      }
+      payload.remarks = remarks.trim();
     }
-  };
+
+    await API.patch(`/admin/leaves/${id}/status`, payload);
+    alert(`Leave ${status} successfully`);
+    fetchLeaves();
+    setSelectedLeave(null);
+    setRemarks("");
+  } catch (err) {
+    alert(err.response?.data?.message || "Error updating leave status");
+  }
+};
+
 
   return (
     <div className="dashboard-container">
@@ -197,9 +220,8 @@ export default function AdminDashboard() {
                     <td>{leave.reason || "—"}</td>
                     <td>{leave.employee?.contact || "—"}</td>
                     <td>
+                      {/* Only View button in table */}
                       <button className="btn view" onClick={() => setSelectedLeave(leave)}>View</button>
-                      <button className="btn approve" onClick={() => updateLeaveStatus(leave._id, "approved")}>Approve</button>
-                      <button className="btn reject" onClick={() => updateLeaveStatus(leave._id, "rejected")}>Reject</button>
                     </td>
                   </tr>
                 ))
@@ -212,7 +234,7 @@ export default function AdminDashboard() {
           </table>
         </section>
 
-        {/* Modal unchanged */}
+        {/* Modal */}
         {selectedLeave && (
           <div className="modal-overlay" onClick={() => setSelectedLeave(null)}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -229,15 +251,26 @@ export default function AdminDashboard() {
               <p><strong>Created At:</strong> {selectedLeave.createdAt}</p>
               <p><strong>Updated At:</strong> {selectedLeave.updatedAt}</p>
 
-              <textarea
-                placeholder="Add remarks..."
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-              />
+              {/* Remarks only shown when rejecting */}
+              {selectedLeave.status === "pending" && (
+                <textarea
+                  placeholder="Add remarks (required for rejection)..."
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                />
+              )}
 
               <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
-                <button className="btn reject" onClick={() => updateLeaveStatus(selectedLeave._id, "rejected")}>Reject</button>
-                                <button className="btn close" onClick={() => { 
+                {/* Show Approve/Reject only if status is pending */}
+                {selectedLeave.status === "pending" && (
+                  <>
+                    <button className="btn approve" onClick={() => updateLeaveStatus(selectedLeave._id, "approved")}>Approve</button>
+                    <button className="btn reject" onClick={() => updateLeaveStatus(selectedLeave._id, "rejected")}>Reject</button>
+                  </>
+                )}
+
+                {/* Always show Close button */}
+                <button className="btn close" onClick={() => { 
                   setSelectedLeave(null); 
                   setRemarks(""); 
                 }}>

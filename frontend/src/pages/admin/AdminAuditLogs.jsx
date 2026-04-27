@@ -5,13 +5,12 @@ import "../../styles/pages/admin.css";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
-
 export default function AdminAuditLogs() {
   const [logs, setLogs] = useState([]);
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 10;
-  const [user, setUser] = useState(null); // ✅ add user state
+  const [user, setUser] = useState(null);
 
   // 🔹 Fetch current user profile
   useEffect(() => {
@@ -67,50 +66,53 @@ export default function AdminAuditLogs() {
   const totalPages = Math.max(1, Math.ceil(filteredLogs.length / pageSize));
   const paginatedLogs = filteredLogs.slice((page - 1) * pageSize, page * pageSize);
 
-// ✅ Export PDF handler
-const handleExportPDF = () => {
-  try {
-    const doc = new jsPDF();
-    doc.text("System Audit Logs", 14, 15);
+  // ✅ Export PDF handler
+  const handleExportPDF = () => {
+    try {
+      const doc = new jsPDF();
+      doc.text("System Audit Logs", 14, 15);
 
-    const tableColumn = [
-      "Timestamp",
-      "Action",
-      "Target ID",
-      "Performed By",
-      "Role",
-      "Method",
-      "URL",
-      "Status",
-      "Details",
-    ];
+      const tableColumn = [
+        "Timestamp",
+        "Action",
+        "Target ID",
+        "Performed By",
+        "Role",
+        "Method",
+        "URL",
+        "Status",
+        "Details",
+        "Before State",
+        "After State",
+      ];
 
-    const tableRows = filteredLogs.map((log) => [
-      new Date(log.timestamp).toLocaleString(),
-      log.action || "—",
-      log.targetId || "—",
-      log.performedByName || log.performedBy || "—",
-      log.performedByRole || "—",
-      log.requestMethod || "—",
-      log.requestUrl || "—",
-      log.status || "—",
-      log.details || "—",
-    ]);
+      const tableRows = filteredLogs.map((log) => [
+        new Date(log.createdAt).toLocaleString(),
+        log.action || "—",
+        log.targetId || "—",
+        log.performedByName || log.performedBy || "—",
+        log.performedByRole || "—",
+        log.requestMethod || "—",
+        log.requestUrl || "—",
+        log.status || "—",
+        log.details || "—",
+        log.beforeState ? JSON.stringify(log.beforeState) : "—",
+        log.afterState ? JSON.stringify(log.afterState) : "—",
+      ]);
 
-    // ✅ Use autoTable function directly
-    autoTable(doc, {
-      head: [tableColumn],
-      body: tableRows,
-      startY: 20,
-      styles: { fontSize: 8 },
-    });
+      autoTable(doc, {
+        head: [tableColumn],
+        body: tableRows,
+        startY: 20,
+        styles: { fontSize: 8 },
+      });
 
-    doc.save("audit_logs.pdf");
-  } catch (err) {
-    console.error("Error exporting PDF:", err);
-    alert("Failed to export PDF. Check console for details.");
-  }
-};
+      doc.save("audit_logs.pdf");
+    } catch (err) {
+      console.error("Error exporting PDF:", err);
+      alert("Failed to export PDF. Check console for details.");
+    }
+  };
 
   return (
     <div className="dashboard-container">
@@ -156,7 +158,6 @@ const handleExportPDF = () => {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
-            {/* 🔹 Export PDF button */}
             <button className="btn" onClick={handleExportPDF}>
               Export PDF
             </button>
@@ -185,7 +186,7 @@ const handleExportPDF = () => {
               {paginatedLogs.length > 0 ? (
                 paginatedLogs.map((log) => (
                   <tr key={log._id}>
-                    <td>{new Date(log.timestamp).toLocaleString()}</td>
+                    <td>{new Date(log.createdAt).toLocaleString()}</td>
                     <td>{log.action}</td>
                     <td>{log.targetId}</td>
                     <td>{log.performedByName || log.performedBy}</td>
@@ -194,12 +195,8 @@ const handleExportPDF = () => {
                     <td>{log.requestUrl}</td>
                     <td>{log.status}</td>
                     <td>{log.details || "—"}</td>
-                    <td>
-                      {log.beforeState ? JSON.stringify(log.beforeState) : "—"}
-                    </td>
-                    <td>
-                      {log.afterState ? JSON.stringify(log.afterState) : "—"}
-                    </td>
+                    <td>{log.beforeState ? JSON.stringify(log.beforeState) : "—"}</td>
+                    <td>{log.afterState ? JSON.stringify(log.afterState) : "—"}</td>
                   </tr>
                 ))
               ) : (
@@ -212,21 +209,14 @@ const handleExportPDF = () => {
             </tbody>
           </table>
 
-          {/* Pagination controls */}
           <div className="pagination">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((prev) => prev - 1)}
-            >
+            <button disabled={page <= 1} onClick={() => setPage((prev) => prev - 1)}>
               Previous
             </button>
             <span>
               Page {page} of {totalPages}
             </span>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage((prev) => prev + 1)}
-            >
+            <button disabled={page >= totalPages} onClick={() => setPage((prev) => prev + 1)}>
               Next
             </button>
           </div>

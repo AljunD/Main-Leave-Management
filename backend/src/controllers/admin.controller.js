@@ -82,12 +82,39 @@ export const getAllEmployees = async(req, res) => {
         const employees = await User.find({ isTrashed: false })
             .select('-password')
             .lean();
+
+        await AuditLog.create({
+            action: 'get-all-employees',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'success',
+            details: `Fetched all active employees`
+        });
+
         res.json({ success: true, statusCode: 200, employees });
     } catch (err) {
         console.error('Error fetching employees:', err.message);
+        await AuditLog.create({
+            action: 'get-all-employees',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'failure',
+            details: `Server error while fetching employees`
+        });
         res.status(500).json({ success: false, statusCode: 500, message: 'Server error while fetching employees' });
     }
 };
+
 
 export const getAdminStats = async(req, res) => {
     try {
@@ -96,16 +123,39 @@ export const getAdminStats = async(req, res) => {
             Leave.countDocuments({ status: 'pending', isTrashed: false }),
             Leave.countDocuments({ status: 'approved', isTrashed: false }),
         ]);
-        res.json({
-            success: true,
-            statusCode: 200,
-            stats: { totalEmployees, pendingLeaves, approvedLeaves },
+
+        await AuditLog.create({
+            action: 'get-admin-stats',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'success',
+            details: `Fetched admin stats: employees=${totalEmployees}, pendingLeaves=${pendingLeaves}, approvedLeaves=${approvedLeaves}`
         });
+
+        res.json({ success: true, statusCode: 200, stats: { totalEmployees, pendingLeaves, approvedLeaves } });
     } catch (err) {
         console.error('Error fetching stats:', err.message);
+        await AuditLog.create({
+            action: 'get-admin-stats',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'failure',
+            details: `Server error while fetching admin stats`
+        });
         res.status(500).json({ success: false, statusCode: 500, message: 'Server error while fetching stats' });
     }
 };
+
 
 // === UPDATE EMPLOYEE ===
 export const updateEmployee = async(req, res) => {
@@ -172,11 +222,26 @@ export const trashEmployee = async(req, res) => {
         // Snapshot before change
         const before = await User.findById(req.params.id).lean();
 
-        const user = await User.findByIdAndUpdate(
-            req.params.id, { isTrashed: true, trashedAt: new Date() }, { returnDocument: 'after' }
-        );
+        if (!before) {
+            await AuditLog.create({
+                action: 'trash-user',
+                targetId: req.params.id,
+                targetType: 'User',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: null,
+                afterState: null,
+                status: 'failure',
+                details: 'Employee not found'
+            });
+            return res.status(404).json({ success: false, message: 'Employee not found' });
+        }
 
-        if (!user) {
+        // 🚫 Prevent trashing admins
+        if (before.role === 'admin') {
             await AuditLog.create({
                 action: 'trash-user',
                 targetId: req.params.id,
@@ -189,10 +254,14 @@ export const trashEmployee = async(req, res) => {
                 beforeState: before,
                 afterState: null,
                 status: 'failure',
-                details: `Attempted to trash employee ${req.params.id}, but not found`
+                details: 'Attempted to trash an admin account'
             });
-            return res.status(404).json({ success: false, message: 'Employee not found' });
+            return res.status(403).json({ success: false, message: 'Cannot trash an admin account' });
         }
+
+        const user = await User.findByIdAndUpdate(
+            req.params.id, { isTrashed: true, trashedAt: new Date() }, { returnDocument: 'after' }
+        );
 
         // Audit log for success
         await AuditLog.create({
@@ -225,7 +294,7 @@ export const trashEmployee = async(req, res) => {
             beforeState: null,
             afterState: null,
             status: 'failure',
-            details: `Server error while trashing employee ${req.params.id}`
+            details: 'Server error while trashing employee'
         });
         res.status(500).json({ success: false, message: 'Server error while trashing employee' });
     }
@@ -377,98 +446,375 @@ export const deleteEmployee = async(req, res) => {
 export const getAllLeaves = async(req, res) => {
     try {
         const leaves = await Leave.find({ isTrashed: false })
-            .populate('employee', 'name lastName department position contact email role')
+            .populate('employee', 'employeeId name lastName department position contact email role')
             .lean();
+
+        await AuditLog.create({
+            action: 'get-all-leaves',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'success',
+            details: `Fetched all active leave records`
+        });
+
         res.json({ success: true, statusCode: 200, leaves });
     } catch (err) {
         console.error('Error fetching leaves:', err.message);
+        await AuditLog.create({
+            action: 'get-all-leaves',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'failure',
+            details: `Server error while fetching leaves`
+        });
         res.status(500).json({ success: false, statusCode: 500, message: 'Server error while fetching leaves' });
     }
 };
+
 
 export const viewLeaveRequestDetail = async(req, res) => {
     try {
         const leave = await Leave.findById(req.params.id)
             .populate('employee', 'name lastName department position contact email role')
             .lean();
+
         if (!leave) {
+            await AuditLog.create({
+                action: 'view-leave-detail',
+                targetId: req.params.id,
+                targetType: 'Leave',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                status: 'failure',
+                details: `Attempted to view leave ${req.params.id}, but not found`
+            });
             return res.status(404).json({ success: false, message: 'Leave not found' });
         }
+
+        await AuditLog.create({
+            action: 'view-leave-detail',
+            targetId: leave._id.toString(),
+            targetType: 'Leave',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'success',
+            details: `Viewed leave request ${leave._id}`
+        });
+
         res.json({ success: true, statusCode: 200, leave });
     } catch (err) {
         console.error('Error fetching leave:', err.message);
+        await AuditLog.create({
+            action: 'view-leave-detail',
+            targetId: req.params.id,
+            targetType: 'Leave',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'failure',
+            details: `Server error while fetching leave ${req.params.id}`
+        });
         res.status(500).json({ success: false, message: 'Server error' });
     }
 };
+
 
 export const updateLeaveStatus = [
     validate(statusUpdateSchema),
     async(req, res) => {
         try {
-            const leave = await Leave.findById(req.params.id).populate('employee');
-            if (!leave) return res.status(404).json({ success: false, statusCode: 404, message: 'Leave not found' });
-
-            if (leave.status !== 'pending') {
-                return res.status(400).json({ success: false, statusCode: 400, message: 'Only pending leaves can be updated' });
+            const leave = await Leave.findById(req.params.id).populate("employee");
+            if (!leave) {
+                await AuditLog.create({
+                    action: "update-leave-status",
+                    targetId: req.params.id,
+                    targetType: "Leave",
+                    performedBy: req.user.id,
+                    performedByName: `${req.user.name} ${req.user.lastName}`,
+                    performedByRole: req.user.role,
+                    requestMethod: req.method,
+                    requestUrl: req.originalUrl,
+                    status: "failure",
+                    details: `Leave ${req.params.id} not found`,
+                });
+                return res.status(404).json({ success: false, statusCode: 404, message: "Leave not found" });
             }
 
-            leave.status = req.body.status;
-            leave.remarks = req.body.remarks || leave.remarks;
+            if (leave.status !== "pending") {
+                await AuditLog.create({
+                    action: "update-leave-status",
+                    targetId: leave._id.toString(),
+                    targetType: "Leave",
+                    performedBy: req.user.id,
+                    performedByName: `${req.user.name} ${req.user.lastName}`,
+                    performedByRole: req.user.role,
+                    requestMethod: req.method,
+                    requestUrl: req.originalUrl,
+                    status: "failure",
+                    details: `Leave ${leave._id} already ${leave.status}`,
+                });
+                return res.status(400).json({ success: false, statusCode: 400, message: "Only pending leaves can be updated" });
+            }
 
-            if (req.body.status === 'approved') {
-                const days = calculateLeaveDays(leave.startDate, leave.endDate);
-                if (leave.employee.leaveBalance < days) {
-                    return res.status(400).json({ success: false, statusCode: 400, message: 'Insufficient leave balance' });
+            const before = { status: leave.status, remarks: leave.remarks };
+
+            leave.status = req.body.status;
+
+            // Only set remarks if rejecting
+            if (req.body.status === "rejected") {
+                leave.remarks = (req.body.remarks && req.body.remarks.trim()) ?
+                    req.body.remarks.trim() :
+                    "Rejected by admin";
+            }
+
+            if (req.body.status === "approved") {
+                // Ensure startDate and endDate are valid
+                const start = new Date(leave.startDate);
+                const end = new Date(leave.endDate);
+
+                if (isNaN(start) || isNaN(end)) {
+                    return res.status(400).json({ success: false, statusCode: 400, message: "Invalid leave dates" });
                 }
+
+                const days = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1; // inclusive
+                if (days <= 0) {
+                    return res.status(400).json({ success: false, statusCode: 400, message: "Invalid leave duration" });
+                }
+
+                if (leave.employee.leaveBalance < days) {
+                    return res.status(400).json({ success: false, statusCode: 400, message: "Insufficient leave balance" });
+                }
+
                 leave.employee.leaveBalance -= days;
                 await leave.employee.save();
                 leave.duration = days;
+                // remarks optional for approval
+                leave.remarks = (leave.remarks && leave.remarks.trim()) ?
+                    leave.remarks.trim() :
+                    "Approved by admin";
             }
 
             await leave.save();
-            res.json({ success: true, statusCode: 200, message: `Leave ${req.body.status}`, leave });
+
+            await AuditLog.create({
+                action: "update-leave-status",
+                targetId: leave._id.toString(),
+                targetType: "Leave",
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: before,
+                afterState: { status: leave.status, remarks: leave.remarks },
+                status: "success",
+                details: `Leave ${leave._id} updated to ${req.body.status}`,
+            });
+
+            res.json({
+                success: true,
+                statusCode: 200,
+                message: `Leave ${req.body.status}`,
+                leave,
+            });
         } catch (err) {
-            console.error('Error updating leave status:', err.message);
-            res.status(500).json({ success: false, statusCode: 500, message: 'Server error while updating leave status' });
+            console.error("Error updating leave status:", err.message);
+            await AuditLog.create({
+                action: "update-leave-status",
+                targetId: req.params.id,
+                targetType: "Leave",
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                status: "failure",
+                details: `Server error while updating leave ${req.params.id}`,
+            });
+            res.status(500).json({ success: false, statusCode: 500, message: "Server error while updating leave status" });
         }
     },
 ];
 
 export const trashLeave = async(req, res) => {
     try {
+        const before = await Leave.findById(req.params.id).lean();
         const leave = await Leave.findByIdAndUpdate(
             req.params.id, { isTrashed: true, trashedAt: new Date() }, { returnDocument: 'after' }
         );
-        if (!leave) return res.status(404).json({ success: false, statusCode: 404, message: 'Leave not found' });
-        res.json({ success: true, statusCode: 200, message: 'Leave moved to trash' });
+
+        if (!leave) {
+            await AuditLog.create({
+                action: 'trash-leave',
+                targetId: req.params.id,
+                targetType: 'Leave',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: before,
+                afterState: null,
+                status: 'failure',
+                details: `Attempted to trash leave ${req.params.id}, but not found`
+            });
+            return res.status(404).json({ success: false, statusCode: 404, message: 'Leave not found' });
+        }
+
+        await AuditLog.create({
+            action: 'trash-leave',
+            targetId: leave._id.toString(),
+            targetType: 'Leave',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: before,
+            afterState: leave,
+            status: 'success',
+            details: `Leave ${leave._id} moved to trash`
+        });
+
+        res.json({ success: true, statusCode: 200, message: 'Leave moved to trash', leave });
     } catch (err) {
         console.error('Error trashing leave:', err.message);
+        await AuditLog.create({
+            action: 'trash-leave',
+            targetId: req.params.id,
+            targetType: 'Leave',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'failure',
+            details: `Server error while trashing leave ${req.params.id}`
+        });
         res.status(500).json({ success: false, statusCode: 500, message: 'Server error while trashing leave' });
     }
 };
 
+
 export const restoreLeave = async(req, res) => {
     try {
+        const before = await Leave.findById(req.params.id).lean();
         const leave = await Leave.findByIdAndUpdate(
             req.params.id, { isTrashed: false, trashedAt: null }, { returnDocument: 'after' }
         );
-        if (!leave) return res.status(404).json({ success: false, statusCode: 404, message: 'Leave not found' });
+
+        if (!leave) {
+            await AuditLog.create({
+                action: 'restore-leave',
+                targetId: req.params.id,
+                targetType: 'Leave',
+                performedBy: req.user.id,
+                performedByName: `${req.user.name} ${req.user.lastName}`,
+                performedByRole: req.user.role,
+                requestMethod: req.method,
+                requestUrl: req.originalUrl,
+                beforeState: before,
+                afterState: null,
+                status: 'failure',
+                details: `Attempted to restore leave ${req.params.id}, but not found`
+            });
+            return res.status(404).json({ success: false, message: 'Leave not found' });
+        }
+
+        await AuditLog.create({
+            action: 'restore-leave',
+            targetId: leave._id.toString(),
+            targetType: 'Leave',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: before,
+            afterState: leave,
+            status: 'success',
+            details: `Leave ${leave._id} restored from trash`
+        });
+
         res.json({ success: true, statusCode: 200, message: 'Leave restored', leave });
     } catch (err) {
         console.error('Error restoring leave:', err.message);
+        await AuditLog.create({
+            action: 'restore-leave',
+            targetId: req.params.id,
+            targetType: 'Leave',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: 'failure',
+            details: `Server error while restoring leave ${req.params.id}`
+        });
         res.status(500).json({ success: false, statusCode: 500, message: 'Server error while restoring leave' });
     }
 };
+
 // === GET TRASHED LEAVES ===
+// Get all trashed leave records
 export const getTrashedLeaves = async(req, res) => {
     try {
         const leaves = await Leave.find({ isTrashed: true })
-            .populate('employee', 'name lastName department position contact email role')
+            .populate('employee', 'employeeId name lastName department position contact email role')
             .lean();
+
+        await AuditLog.create({
+            action: 'get-trashed-leaves',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: null,
+            afterState: leaves,
+            status: 'success',
+            details: `Fetched ${leaves.length} trashed leave records`
+        });
 
         res.json({ success: true, statusCode: 200, leaves });
     } catch (err) {
         console.error('Error fetching trashed leaves:', err.message);
+
+        await AuditLog.create({
+            action: 'get-trashed-leaves',
+            targetId: req.user.id,
+            targetType: 'User',
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            beforeState: null,
+            afterState: null,
+            status: 'failure',
+            details: `Server error while fetching trashed leaves: ${err.message}`
+        });
+
         res.status(500).json({
             success: false,
             statusCode: 500,
@@ -476,6 +822,7 @@ export const getTrashedLeaves = async(req, res) => {
         });
     }
 };
+
 // Permanent delete (mark as deleted, not remove)
 export const deleteLeave = async(req, res) => {
     try {
@@ -540,15 +887,66 @@ export const deleteLeave = async(req, res) => {
         res.status(500).json({ success: false, message: 'Server error while deleting leave' });
     }
 };
-// controllers/admin.controller.js
+
 export const getAuditLogs = async(req, res) => {
     try {
+        const totalLogs = await AuditLog.countDocuments();
+
+        // ✅ Force exactly 2 pages
+        const limit = Math.ceil(totalLogs / 20); // divide logs into 2 pages
+        const page = parseInt(req.query.page, 10) || 1;
+        const skip = (page - 1) * limit;
+
         const logs = await AuditLog.find()
             .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
             .lean();
-        res.json({ success: true, statusCode: 200, logs });
+
+        await AuditLog.create({
+            action: "get-audit-logs",
+            targetId: req.user.id,
+            targetType: "User",
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: "success",
+            details: `Fetched ${logs.length} logs (page ${page} of 2)`,
+        });
+
+        res.json({
+            success: true,
+            statusCode: 200,
+            logs,
+            pagination: {
+                totalLogs,
+                totalPages: 20, // ✅ always 2 pages
+                currentPage: page,
+                pageSize: limit,
+            },
+        });
     } catch (err) {
-        console.error('Error fetching audit logs:', err.message);
-        res.status(500).json({ success: false, statusCode: 500, message: 'Server error while fetching audit logs' });
+        console.error("Error fetching audit logs:", err.message);
+
+        await AuditLog.create({
+            action: "get-audit-logs",
+            targetId: req.user.id,
+            targetType: "User",
+            performedBy: req.user.id,
+            performedByName: `${req.user.name} ${req.user.lastName}`,
+            performedByRole: req.user.role,
+            requestMethod: req.method,
+            requestUrl: req.originalUrl,
+            status: "failure",
+            details: "Error fetching logs",
+        });
+
+        res.status(500).json({
+            success: false,
+            statusCode: 500,
+            message: "Server error while fetching audit logs",
+        });
     }
 };

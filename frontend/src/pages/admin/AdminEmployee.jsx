@@ -98,15 +98,20 @@ export default function AdminEmployee() {
   });
 
   // 🔹 Trash handler
-  const handleTrash = async (id) => {
-    try {
-      await API.patch(`/admin/employees/${id}/trash`);
-      alert(`Employee ${id} moved to trash successfully`);
-      fetchEmployees(); // refresh list
-    } catch (err) {
-      alert(err.response?.data?.message || "Error trashing employee");
+const handleTrash = async (id, role) => {
+  try {
+    if (role === "admin") {
+      alert("You cannot trash an admin account.");
+      return;
     }
-  };
+
+    await API.patch(`/admin/employees/${id}/trash`);
+    alert(`Employee ${id} moved to trash successfully`);
+    fetchEmployees(); // refresh list
+  } catch (err) {
+    alert(err.response?.data?.message || "Error trashing employee");
+  }
+};
 
   return (
     <div className="dashboard-container">

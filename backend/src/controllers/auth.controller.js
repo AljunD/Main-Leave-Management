@@ -11,28 +11,38 @@ export const login = [
     async(req, res) => {
         try {
             const { email, password } = req.body;
-
-            const user = await User.findOne({
-                email: email.toLowerCase().trim(),
-                isTrashed: false,
-            });
+            const user = await User.findOne({ email: email.toLowerCase().trim() });
 
             if (!user) {
                 await AuditLog.create({
                     action: 'login',
                     targetId: email,
                     targetType: 'User',
-                    performedBy: null,
-                    performedByName: null,
-                    performedByRole: null,
+                    performedBy: undefined,
+                    performedByName: email,
+                    performedByRole: 'unauthenticated',
                     requestMethod: req.method,
                     requestUrl: req.originalUrl,
-                    beforeState: null,
-                    afterState: null,
                     status: 'failure',
-                    details: `Login attempt failed: user ${email} not found`
+                    details: 'User not found'
                 });
                 return res.status(401).json({ success: false, statusCode: 401, message: 'Invalid credentials' });
+            }
+
+            if (user.isTrashed) {
+                await AuditLog.create({
+                    action: 'login',
+                    targetId: user._id.toString(),
+                    targetType: 'User',
+                    performedBy: user._id,
+                    performedByName: `${user.name} ${user.lastName}`,
+                    performedByRole: user.role,
+                    requestMethod: req.method,
+                    requestUrl: req.originalUrl,
+                    status: 'failure',
+                    details: 'Account trashed'
+                });
+                return res.status(403).json({ success: false, statusCode: 403, message: 'Account is trashed. Contact admin.' });
             }
 
             const isMatch = await bcrypt.compare(password, user.password);
@@ -46,10 +56,8 @@ export const login = [
                     performedByRole: user.role,
                     requestMethod: req.method,
                     requestUrl: req.originalUrl,
-                    beforeState: null,
-                    afterState: null,
                     status: 'failure',
-                    details: `Login attempt failed: incorrect password for ${user.email}`
+                    details: 'Incorrect password'
                 });
                 return res.status(401).json({ success: false, statusCode: 401, message: 'Invalid credentials' });
             }
@@ -67,55 +75,30 @@ export const login = [
                 performedByRole: user.role,
                 requestMethod: req.method,
                 requestUrl: req.originalUrl,
-                beforeState: null,
-                afterState: user,
                 status: 'success',
-                details: `User ${user.email} logged in`
+                details: 'Login success'
             });
 
-            res.json({
-                success: true,
-                statusCode: 200,
-                message: 'Login successful',
-                token,
-                user: {
-                    id: user._id,
-                    name: user.name,
-                    lastName: user.lastName,
-                    department: user.department,
-                    position: user.position,
-                    contact: user.contact,
-                    email: user.email,
-                    role: user.role,
-                    leaveBalance: user.leaveBalance,
-                    isTrashed: user.isTrashed,
-                    trashedAt: user.trashedAt,
-                    createdAt: user.createdAt,
-                    updatedAt: user.updatedAt,
-                    isDeleted: user.isDeleted,
-                    deletedAt: user.deletedAt,
-                },
-            });
+            res.json({ success: true, statusCode: 200, message: 'Login successful', token, user });
         } catch (err) {
             console.error('Error during login:', err.message);
             await AuditLog.create({
                 action: 'login',
                 targetId: req.body.email,
                 targetType: 'User',
-                performedBy: null,
-                performedByName: null,
-                performedByRole: null,
+                performedBy: undefined,
+                performedByName: req.body.email,
+                performedByRole: 'unauthenticated',
                 requestMethod: req.method,
                 requestUrl: req.originalUrl,
-                beforeState: null,
-                afterState: null,
                 status: 'failure',
-                details: `Server error during login for ${req.body.email}`
+                details: 'Server error during login'
             });
             res.status(500).json({ success: false, statusCode: 500, message: 'Server error while logging in' });
         }
     },
 ];
+
 export const getMe = async(req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password');
@@ -130,10 +113,8 @@ export const getMe = async(req, res) => {
                 performedByRole: req.user.role,
                 requestMethod: req.method,
                 requestUrl: req.originalUrl,
-                beforeState: null,
-                afterState: null,
                 status: 'failure',
-                details: `User profile not found for ${req.user.email}`
+                details: 'User not found'
             });
             return res.status(404).json({ success: false, statusCode: 404, message: 'User not found' });
         }
@@ -147,10 +128,8 @@ export const getMe = async(req, res) => {
             performedByRole: req.user.role,
             requestMethod: req.method,
             requestUrl: req.originalUrl,
-            beforeState: null,
-            afterState: user,
             status: 'success',
-            details: `Fetched current user profile for ${user.email}`
+            details: 'Profile fetched'
         });
 
         res.json({ success: true, statusCode: 200, user });
@@ -165,10 +144,8 @@ export const getMe = async(req, res) => {
             performedByRole: req.user.role,
             requestMethod: req.method,
             requestUrl: req.originalUrl,
-            beforeState: null,
-            afterState: null,
             status: 'failure',
-            details: `Server error while fetching profile for ${req.user.email}`
+            details: 'Server error fetching profile'
         });
         res.status(500).json({ success: false, statusCode: 500, message: 'Server error while fetching profile' });
     }
@@ -220,6 +197,18 @@ export const changePassword = [
         try {
             const user = await User.findById(req.user.id);
             if (!user || user.isTrashed) {
+                await AuditLog.create({
+                    action: 'change-password',
+                    targetId: req.user.id,
+                    targetType: 'User',
+                    performedBy: req.user.id,
+                    performedByName: `${req.user.name} ${req.user.lastName}`,
+                    performedByRole: req.user.role,
+                    requestMethod: req.method,
+                    requestUrl: req.originalUrl,
+                    status: 'failure',
+                    details: 'User not found'
+                });
                 return res.status(404).json({ success: false, statusCode: 404, message: 'User not found' });
             }
 
@@ -234,10 +223,8 @@ export const changePassword = [
                     performedByRole: user.role,
                     requestMethod: req.method,
                     requestUrl: req.originalUrl,
-                    beforeState: null,
-                    afterState: null,
                     status: 'failure',
-                    details: `User ${user.email} attempted password change but current password incorrect`
+                    details: 'Incorrect current password'
                 });
                 return res.status(400).json({ success: false, statusCode: 400, message: 'Current password is incorrect' });
             }
@@ -258,7 +245,7 @@ export const changePassword = [
                 beforeState: before,
                 afterState: { password: 'updated' },
                 status: 'success',
-                details: `User ${user.email} changed their password`
+                details: 'Password changed'
             });
 
             res.json({ success: true, statusCode: 200, message: 'Password changed successfully' });
@@ -276,9 +263,13 @@ export const changePassword = [
                 beforeState: null,
                 afterState: null,
                 status: 'failure',
-                details: `Server error while changing password for ${req.user.email}`
+                details: 'Server error while changing password'
             });
-            res.status(500).json({ success: false, statusCode: 500, message: 'Server error while changing password' });
+            res.status(500).json({
+                success: false,
+                statusCode: 500,
+                message: 'Server error while changing password',
+            });
         }
     },
 ];
