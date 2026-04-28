@@ -1,11 +1,9 @@
-// src/pages/DashboardPage.jsx
+// src/pages/EmployeeDashboard.jsx
 import { useEffect, useState } from "react";
-import API from "../../api/axios";
-import { useAuth } from "../../context/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
-import "../../styles/pages/dashboard-page.css";
+import "../../styles/employee.css";
 
-export default function DashboardPage() {
+export default function EmployeeDashboard() {
   const navigate = useNavigate();
   const [userData, setUserData] = useState(null);
   const [leaves, setLeaves] = useState([]);
@@ -22,29 +20,28 @@ export default function DashboardPage() {
 
       setLoading(true);
       try {
-        // Fetch user profile
         const userRes = await fetch("http://localhost:5000/api/v1/auth/me", {
           headers: { Authorization: `Bearer ${token}` },
         });
-
-        if (!userRes.ok) {
-          throw new Error("Session expired. Please login again.");
-        }
-
+        if (!userRes.ok) throw new Error("Session expired. Please login again.");
         const userJson = await userRes.json();
-        setUserData(userJson.data);
+        setUserData(userJson.user);
 
-        // Fetch leave history
-        const leaveRes = await fetch(
-          "http://localhost:5000/api/v1/employee/leaves/my",
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
+        const leaveRes = await fetch("http://localhost:5000/api/v1/employee/leaves/my", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (leaveRes.ok) {
           const leaveJson = await leaveRes.json();
-          setLeaves(leaveJson.data || []);
+          let fetchedLeaves = leaveJson.leaves || [];
+
+          // ✅ Merge new leave if present
+          const newLeave = localStorage.getItem("newLeave");
+          if (newLeave) {
+            fetchedLeaves = [JSON.parse(newLeave), ...fetchedLeaves];
+            localStorage.removeItem("newLeave"); // clear after use
+          }
+
+          setLeaves(fetchedLeaves);
         }
       } catch (e) {
         setError(e.message || "Failed to load data");
@@ -55,14 +52,23 @@ export default function DashboardPage() {
     loadData();
   }, [navigate]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token = localStorage.getItem("token");
+    try {
+      await fetch("http://localhost:5000/api/v1/auth/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch (err) {
+      console.error("Logout error:", err);
+    }
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     navigate("/login");
   };
 
   const recent = leaves.slice(0, 5);
-  const used = leaves.filter((l) => l.status === "Approved").length;
+  const used = leaves.filter((l) => l.status?.toLowerCase() === "approved").length;
 
   if (loading) {
     return (
@@ -75,7 +81,9 @@ export default function DashboardPage() {
   return (
     <div className="page dashboard-page">
       <div className="page-intro">
-        <h1>Hello, {userData?.firstName || "User"}!</h1>
+        <h1>
+          Hello, {userData ? `${userData.name} ${userData.lastName}` : "User"}!
+        </h1>
         <span className="muted">Here is your leave overview.</span>
         <button
           onClick={handleLogout}
@@ -101,17 +109,31 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <Link to="/apply-leave" className="btn btn-dark btn-block apply-cta">
-        + Apply for leave
-      </Link>
+  <div className="nav-buttons" style={{ margin: "20px 0" }}>
+    <Link to="/employee/dashboard" className="btn btn-light btn-block">
+      🏠 Dashboard
+    </Link>
+    <Link to="/employee/apply-leave" className="btn btn-dark btn-block">
+      ➕ Apply for Leave
+    </Link>
+    <Link to="/employee/leave-history" className="btn btn-light btn-block">
+      📜 Leave History
+    </Link>
+    <Link to="/employee/profile" className="btn btn-light btn-block">
+      👤 Profile
+    </Link>
+  </div>
 
       <h2 className="section-title">Recent leave requests</h2>
       <div className="card-list">
         {recent.length === 0 ? (
           <p className="muted">No requests yet.</p>
         ) : (
-          recent.map((leave) => (
-            <article key={leave._id} className="leave-card">
+          recent.map((leave, index) => (
+            <article 
+              key={`${leave._id}-${index}`}   // ✅ unique key
+              className="leave-card"
+            >
               <div className="leave-card-top">
                 <div>
                   <h3>{leave.leaveType || "Leave"}</h3>
@@ -123,7 +145,7 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <span
-                  className={`badge badge-${(leave.status || "Pending").toLowerCase()}`}
+                  className={`badge badge-${(leave.status || "pending").toLowerCase()}`}
                 >
                   {leave.status || "Pending"}
                 </span>
@@ -142,6 +164,7 @@ export default function DashboardPage() {
           ))
         )}
       </div>
+
     </div>
   );
 }

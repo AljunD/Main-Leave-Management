@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import API from "../../api/axios";   // ✅ centralized axios instance
-import "../../styles/pages/admin.css";
+import "../../styles/admin.css";
 
 export default function AdminLeaveHistory() {
   const [leaves, setLeaves] = useState([]);

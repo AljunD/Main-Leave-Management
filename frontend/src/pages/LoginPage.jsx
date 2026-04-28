@@ -1,7 +1,7 @@
 // src/pages/LoginPage.jsx
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import "../styles/pages/auth-pages.css";
+import "../styles/employee.css";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -44,8 +44,8 @@ export default function LoginPage() {
       // Navigate based on role
       if (data.user?.role === "admin") {
         navigate("/admin", { replace: true });
-      } else {
-        navigate("/dashboard", { replace: true });
+      } else if (data.user?.role === "employee") {
+        navigate("/employee/dashboard", { replace: true });
       }
     } else {
       setError(data.message || "Login failed");

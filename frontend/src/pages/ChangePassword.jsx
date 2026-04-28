@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import API from "../api/axios";
 import { useAuth } from "../context/AuthContext";
-import "../styles/pages/auth-pages.css";
+import "../styles/employee.css";
 
 export default function ChangePasswordPage() {
   const { user, setUser } = useAuth();

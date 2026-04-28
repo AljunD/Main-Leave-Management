@@ -1,22 +1,22 @@
-// src/pages/ApplyLeavePage.jsx
+// src/pages/EmployeeApplyLeave.jsx
 import { useState } from "react";
-import API from "../../api/axios";
-import { useAuth } from "../../context/AuthContext";
-import { useNavigate } from "react-router-dom";
-import "../../styles/pages/apply-leave-page.css";
+import { useNavigate, Link } from "react-router-dom";
+import "../../styles/employee.css";
 
 const STEPS = ["Type", "Details", "Review"];
 
+// ✅ Values aligned with backend schema
 const OPTIONS = [
-  { label: "Vacation leave", value: "Annual" },
-  { label: "Sick leave", value: "Sick" },
-  { label: "Emergency leave", value: "Personal" },
+  { label: "Vacation leave", value: "vacation" },
+  { label: "Sick leave", value: "sick" },
+  { label: "Emergency leave", value: "personal" },
+  { label: "Other leave", value: "other" },
 ];
 
 export default function ApplyLeavePage() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
-  const [leaveType, setLeaveType] = useState("Annual");
+  const [leaveType, setLeaveType] = useState("vacation"); // ✅ default aligned
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("");
@@ -52,39 +52,39 @@ export default function ApplyLeavePage() {
     const token = localStorage.getItem("token");
     const finalReason = urgent ? `[URGENT] ${reason.trim()}` : reason.trim();
 
+    if (!startDate || !endDate || !reason.trim()) {
+      setError("Please fill in all fields before submitting.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      const response = await fetch(
-        "http://localhost:5000/api/v1/employee/leaves",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            leaveType,
-            startDate: new Date(startDate).toISOString(),
-            endDate: new Date(endDate).toISOString(),
-            reason: finalReason,
-          }),
-        }
-      );
+      const response = await fetch("http://localhost:5000/api/v1/employee/leaves", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          leaveType,
+          startDate: new Date(startDate).toISOString(),
+          endDate: new Date(endDate).toISOString(),
+          reason: finalReason,
+        }),
+      });
 
       const data = await response.json();
 
-      if (!response.ok) {
+      if (!response.ok || !data.success) {
         throw new Error(data.message || "Could not submit leave request");
       }
 
-      navigate("/dashboard");
+      // Save new leave for dashboard
+      localStorage.setItem("newLeave", JSON.stringify(data.leave));
+
+      navigate("/employee/dashboard");
     } catch (e) {
-      if (e.message.includes("429") || e.message.includes("limit")) {
-        setError(
-          "You have reached the limit for today. You may only submit up to 3 leave requests per day."
-        );
-      } else {
-        setError(e.message || "Could not submit leave request");
-      }
+      setError(e.message || "Could not submit leave request");
     } finally {
       setLoading(false);
     }
@@ -100,9 +100,7 @@ export default function ApplyLeavePage() {
           {STEPS.map((label, i) => (
             <div
               key={label}
-              className={`step ${i === step ? "active" : ""} ${
-                i < step ? "done" : ""
-              }`}
+              className={`step ${i === step ? "active" : ""} ${i < step ? "done" : ""}`}
             >
               <span className="step-num">{i + 1}</span>
               <span className="step-label">{label}</span>
@@ -111,22 +109,24 @@ export default function ApplyLeavePage() {
         </div>
       </div>
 
+      {/* Back to Dashboard button */}
+      <div className="apply-actions" style={{ marginBottom: "20px" }}>
+        <Link to="/employee/dashboard" className="btn btn-ghost">
+          ← Back to Dashboard
+        </Link>
+      </div>
+
       {/* Step 0: Type */}
       {step === 0 && (
         <section className="apply-section">
           <h2>Select leave type</h2>
-          <p className="muted">
-            Choose the type that matches your Leave schema (Annual / Sick /
-            Personal).
-          </p>
+          <p className="muted">Choose the type that matches your Leave schema.</p>
           <div className="option-list">
             {OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
-                className={`option-card ${
-                  leaveType === opt.value ? "selected" : ""
-                }`}
+                className={`option-card ${leaveType === opt.value ? "selected" : ""}`}
                 onClick={() => setLeaveType(opt.value)}
               >
                 <strong>{opt.label}</strong>
@@ -181,10 +181,7 @@ export default function ApplyLeavePage() {
             />
             <span>
               <strong>Mark as urgent</strong>
-              <span className="muted small">
-                {" "}
-                Prepends [URGENT] to the reason stored in the database.
-              </span>
+              <span className="muted small"> Prepends [URGENT] to the reason stored in the database.</span>
             </span>
           </label>
           {error ? <p className="error-msg">{error}</p> : null}
@@ -222,8 +219,7 @@ export default function ApplyLeavePage() {
           <div className="notice-box">
             <strong>Important</strong>
             <p className="muted small">
-              Your request is saved with status Pending. An admin can approve or
-              reject it and add remarks.
+              Your request is saved with status Pending. An admin can approve or reject it and add remarks.
             </p>
           </div>
           {error ? <p className="error-msg">{error}</p> : null}

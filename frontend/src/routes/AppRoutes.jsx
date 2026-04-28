@@ -1,14 +1,14 @@
 // src/routes/AppRoutes.jsx
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import LoginPage from "../pages/LoginPage";
-import ChangePasswordPage from "../pages/ChangePasswordPage";
+import ChangePasswordPage from "../pages/ChangePassword";
 import ProtectedRoute from "../components/ProtectedRoute";
 
 // Employee pages
-import DashboardPage from "../pages/employee/DashboardPage";
-import ApplyLeavePage from "../pages/employee/ApplyLeavePage";
-import LeaveHistoryPage from "../pages/employee/LeaveHistoryPage";
-import ProfilePage from "../pages/employee/ProfilePage";
+import DashboardPage from "../pages/employee/EmployeeDashboard";
+import ApplyLeavePage from "../pages/employee/EmployeeApplyLeave";
+import LeaveHistoryPage from "../pages/employee/EmployeeLeaveHistory";
+import ProfilePage from "../pages/employee/EmployeeProfile";
 
 // Admin pages
 import AdminDashboard from "../pages/admin/AdminDashboard";
@@ -89,7 +89,7 @@ export default function AppRoutes() {
 
         {/* Employee routes */}
         <Route
-          path="/dashboard"
+          path="/employee/dashboard"
           element={
             <ProtectedRoute allowedRoles={["employee"]}>
               <DashboardPage />
@@ -97,7 +97,7 @@ export default function AppRoutes() {
           }
         />
         <Route
-          path="/apply-leave"
+          path="/employee/apply-leave"
           element={
             <ProtectedRoute allowedRoles={["employee"]}>
               <ApplyLeavePage />
@@ -105,7 +105,7 @@ export default function AppRoutes() {
           }
         />
         <Route
-          path="/leave-history"
+          path="/employee/leave-history"
           element={
             <ProtectedRoute allowedRoles={["employee"]}>
               <LeaveHistoryPage />
@@ -113,7 +113,7 @@ export default function AppRoutes() {
           }
         />
         <Route
-          path="/profile"
+          path="/employee/profile"
           element={
             <ProtectedRoute allowedRoles={["employee"]}>
               <ProfilePage />

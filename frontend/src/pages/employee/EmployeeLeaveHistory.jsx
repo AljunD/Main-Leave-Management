@@ -1,9 +1,9 @@
-// src/pages/LeaveHistoryPage.jsx
+// src/pages/EmployeeLeaveHistory.jsx
 import { useEffect, useState } from "react";
 import API from "../../api/axios";
 import { useAuth } from "../../context/AuthContext";
-import { labelForLeaveType } from "../../utils/leave";
-import "../../styles/pages/leave-history-page.css";
+import { labelForLeaveType, statusLabel, formatLeaveDuration } from "../../utils/leave";
+import "../../styles/employee.css";
 
 export default function LeaveHistoryPage() {
   const { user } = useAuth();
@@ -13,11 +13,22 @@ export default function LeaveHistoryPage() {
 
   useEffect(() => {
     let cancelled = false;
+
     async function load() {
+      if (!user) return; // ✅ guard against null user
+
       setLoading(true);
       setError("");
       try {
-        const list = await api.getLeaves(user._id);
+        const res = await API.get("/employee/leaves/my", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+
+        if (!res.data.success) {
+          throw new Error(res.data.message || "Failed to fetch leaves");
+        }
+
+        const list = res.data.leaves || [];
         if (!cancelled) setLeaves(list);
       } catch (e) {
         if (!cancelled) setError(e.message || "Failed to load");
@@ -25,11 +36,12 @@ export default function LeaveHistoryPage() {
         if (!cancelled) setLoading(false);
       }
     }
+
     load();
     return () => {
       cancelled = true;
     };
-  }, [user._id]);
+  }, [user]);
 
   return (
     <div className="page leave-history-page">
@@ -47,19 +59,18 @@ export default function LeaveHistoryPage() {
         {leaves.length === 0 && !loading ? (
           <p className="muted">No leave records yet.</p>
         ) : (
-          leaves.map((leave) => (
-            <article key={leave._id} className="history-card">
+          leaves.map((leave, index) => (
+            <article key={`${leave._id}-${index}`} className="history-card">
               <div className="history-top">
                 <h3>{labelForLeaveType(leave.leaveType)}</h3>
                 <span
                   className={`badge badge-${leave.status?.toLowerCase() || "pending"}`}
                 >
-                  {leave.status || "Pending"}
+                  {statusLabel(leave.status)}
                 </span>
               </div>
               <p className="muted small">
-                {new Date(leave.startDate).toLocaleDateString()} –{" "}
-                {new Date(leave.endDate).toLocaleDateString()}
+                {formatLeaveDuration(leave.startDate, leave.endDate)}
               </p>
               <p>{leave.reason}</p>
               {leave.adminRemarks && (
